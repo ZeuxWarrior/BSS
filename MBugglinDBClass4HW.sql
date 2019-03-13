@@ -322,3 +322,82 @@ DECLARE @destTable varchar(100);
 SELECT @destTable = TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Status';
 
 SELECT CONCAT('INSERT INTO ', @destTable, ' VALUES (', id, ', ''', name, ''');') AS InsertStatements FROM GuestStatuses;
+
+/* DB Class 4 */
+
+SELECT U.name, R.name AS role FROM Users U INNER JOIN UserRoles R ON U.role = R.id WHERE R.name = 'Owner' OR R.name = 'Management';
+
+/* #2 */
+SELECT U.name AS owner, T.name AS tavern, T.floors FROM Users U INNER JOIN UserRoles R ON U.role = R.id INNER JOIN Taverns T ON T.owner = U.id;
+
+/* #3 */
+SELECT G.name, G.birthdate, G.notes, C.name, L.currentLevel FROM Guests G LEFT JOIN Levels L ON G.id = L.guestId INNER JOIN Classes C ON L.classId = C.id
+	ORDER BY G.name ASC;
+
+/* #4 */
+SELECT TOP 10 P.price, S.name FROM Sales P INNER JOIN Services S ON P.service = S.id ORDER BY P.price DESC;
+
+/* #5 */
+SELECT G.name, COUNT(L.guestId) AS numOfClasses FROM Guests G INNER JOIN Levels L ON G.id = L.guestId
+	GROUP BY G.name, L.guestId HAVING COUNT(L.guestId) >= 2;
+
+/* #6 */
+SELECT G.name, COUNT(L.guestId) AS numOfClasses FROM Guests G INNER JOIN Levels L ON G.id = L.guestId
+	WHERE L.currentLevel > 5 GROUP BY G.name, L.guestId HAVING COUNT(L.guestId) >= 2;
+
+/* #7 */
+SELECT G.name, C.name AS highestLeveledClass, L.currentLevel AS level FROM Guests G INNER JOIN Levels L ON G.id = L.guestId INNER JOIN Classes C ON L.classId = C.id
+	WHERE L.currentLevel IN (
+		SELECT MAX(currentLevel) FROM Levels GROUP BY guestId
+	);
+
+/* #8 */
+SELECT G.name, R.dateStayed FROM Guests G INNER JOIN RoomStays R ON G.id = R.guest WHERE R.dateStayed BETWEEN '2019-03-01' AND '2019-03-31';
+
+/* #9 */
+DECLARE @TableName varchar(100);
+SELECT @TableName = TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Taverns';
+DECLARE @LastColumn varchar(100);
+SELECT @LastColumn = COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @TableName ORDER BY ORDINAL_POSITION ASC;
+
+SELECT CONCAT('CREATE TABLE ', @TableName,' (') AS CreateStatement
+UNION ALL
+SELECT CONCAT(C.COLUMN_NAME, ' ', C.DATA_TYPE, CASE
+	WHEN C.CHARACTER_MAXIMUM_LENGTH IS NOT NULL THEN CONCAT('(',C.CHARACTER_MAXIMUM_LENGTH,')')
+	ELSE ''
+END, CASE
+	WHEN C.IS_NULLABLE = 'NO' THEN ' NOT NULL'
+	ELSE ''
+END, CASE
+	WHEN (SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+		WHERE TABLE_NAME = @TableName AND COLUMN_NAME = C.COLUMN_NAME)
+	LIKE 'PK__%' THEN ' PRIMARY KEY'
+	WHEN (SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+		WHERE TABLE_NAME = @TableName AND COLUMN_NAME = C.COLUMN_NAME)
+	LIKE 'FK__%' THEN CONCAT(
+		' FOREIGN KEY REFERENCES ',(
+			SELECT CONCAT(TABLE_NAME,'(',COLUMN_NAME,')') FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME IN (
+				SELECT K.CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE K JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS R
+					ON K.CONSTRAINT_NAME = R.UNIQUE_CONSTRAINT_NAME JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE F
+					ON R.CONSTRAINT_NAME = F.CONSTRAINT_NAME WHERE F.TABLE_NAME = @TableName AND F.COLUMN_NAME = C.COLUMN_NAME
+			)
+		)
+	)
+	ELSE ''
+END, CASE
+	WHEN COLUMNPROPERTY(object_id(C.TABLE_SCHEMA+'.'+@TableName), C.COLUMN_NAME, 'IsIdentity') = 1 THEN ' IDENTITY'
+	/*WHEN EXISTS (
+		SELECT sysObj.name FROM sys.objects sysObj
+		INNER JOIN sys.columns sysCol ON sysObj.object_id = sysCol.object_id
+		INNER JOIN sys.objects sysTab ON sysObj.parent_object_id = sysTab.object_id
+		WHERE sysCol.is_identity = 1 AND sysTab.name = @TableName AND sysCol.name = C.COLUMN_NAME
+	) THEN ' IDENTITY'*/
+	ELSE ''
+END, CASE
+	WHEN C.COLUMN_NAME = @LastColumn THEN ''
+	ELSE ','
+END) AS CreateStatement
+FROM INFORMATION_SCHEMA.COLUMNS C
+WHERE C.TABLE_NAME = @TableName
+UNION ALL
+SELECT ');' AS CreateStatement;
